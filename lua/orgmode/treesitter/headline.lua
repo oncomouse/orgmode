@@ -205,7 +205,7 @@ function Headline:set_todo(keyword)
   local current_todo = self:todo()
   if current_todo then
     tree_utils.set_node_text(current_todo, keyword)
-    self:update_cookie("todo")
+    self:update_cookie('todo')
     return
   end
 
@@ -213,7 +213,7 @@ function Headline:set_todo(keyword)
   local text = ts.get_node_text(stars, 0)
   tree_utils.set_node_text(stars, string.format('%s %s', text, keyword))
   self:refresh()
-  self:update_cookie("todo")
+  self:update_cookie('todo')
 end
 
 function Headline:item()
@@ -457,8 +457,10 @@ function Headline:cookie_type()
   return nil
 end
 
--- Check if headline cookie is recursive:
-function Headline:cookie_is_recursive()
+-- Check if headline cookie is recursive. `default_type` is set to either 
+-- todo or checkbox, depending on the type of update being processed. It is
+-- used to guess the default recursion behavior from the global config.
+function Headline:cookie_is_recursive(default_type)
   if not self:cookie() then
     return false
   end
@@ -469,6 +471,9 @@ function Headline:cookie_is_recursive()
     end
   end
   local type = self:cookie_type()
+  if not type and default_type then
+    type = default_type
+  end
   if type then
     if config['org_hierarchical_' .. type .. '_statistics'] then
       return true
@@ -477,6 +482,8 @@ function Headline:cookie_is_recursive()
   return false
 end
 
+-- Find any checkboxes in a node's children, including sub lists if we are 
+-- recursing:
 local function child_checkboxes(list_node, recursive)
   local queue = ts_utils.get_named_children(list_node)
   local output = {}
@@ -487,7 +494,7 @@ local function child_checkboxes(list_node, recursive)
     if recursive then
       local children = ts_utils.get_named_children(node)
       vim.tbl_map(function(child_node)
-        if child_node:type() == "list" then
+        if child_node:type() == 'list' then
           vim.tbl_map(function(x)
             table.insert(queue, x)
           end, ts_utils.get_named_children(child_node))
@@ -498,9 +505,10 @@ local function child_checkboxes(list_node, recursive)
   return output
 end
 
+-- Return the current headline's parent headline, if it exists:
 function Headline:get_parent_headline()
   local parent_section = self.headline:parent():parent()
-  if parent_section:child(0):type() == "headline" then
+  if parent_section:child(0):type() == 'headline' then
     return parent_section:child(0)
   end
   return nil
@@ -510,25 +518,26 @@ function Headline:update_cookie(type)
   local cookie = {
     node = self:cookie(),
     type = self:cookie_type(),
-    recursive = self:cookie_is_recursive(),
+    recursive = self:cookie_is_recursive(type),
   }
   local total = 0
   local done = 0
   -- We always need to check the parent TODO, in case there's any recursion
-  if type == "todo" then
-     local parent_headline = self:get_parent_headline()
-     if parent_headline then
-       Headline:new(parent_headline):update_cookie("todo")
-     end
-     return
+  if type == 'todo' then
+    local parent_headline = self:get_parent_headline()
+    if parent_headline then
+      Headline:new(parent_headline):update_cookie('todo')
+    end
   end
+
   if cookie.node and (cookie.type == nil or type == cookie.type) then
+    -- Find the section that contains the current headline:
     local parent_section = tree_utils.find_parent_type(self.headline, 'section')
 
-    -- Parse the children of the headline's parent section for child headlines and lists:
-    for _, node in pairs(ts_utils.get_named_children(parent_section)) do
-      -- The child is a list:
-      if type == 'checkbox' then
+    -- Look for checkboxes in the children, if we're searching for checkboxes:
+    if type == 'checkbox' then
+      for _, node in pairs(ts_utils.get_named_children(parent_section)) do
+        -- The child contains a list we must check:
         if node:type() == 'body' and node:child(0):type() == 'list' then
           local total_boxes = child_checkboxes(node:child(0), cookie.recursive)
           local checked_boxes = vim.tbl_filter(function(box)
@@ -537,8 +546,13 @@ function Headline:update_cookie(type)
           total = total + #total_boxes
           done = done + #checked_boxes
         end
-      else
-        -- The child is a section:
+      end
+    else
+      -- Search for TODO items in this headline's children:
+      local queue = ts_utils.get_named_children(parent_section)
+      while #queue > 0 do
+        local node = table.remove(queue)
+        -- The child is a section with a headline:
         if node:type() == 'section' and node:child(0):type() == 'headline' then
           local hl = Headline:new(node:child(0))
           local _, word, is_done = hl:todo()
@@ -548,7 +562,14 @@ function Headline:update_cookie(type)
               done = done + 1
             end
           end
+          -- Add any children to the queue, if we are recursing:
+          if cookie.recursive then
+            vim.tbl_map(function(n)
+              table.insert(queue, n)
+            end, ts_utils.get_named_children(node))
+          end
         end
+
       end
     end
 
