@@ -514,6 +514,9 @@ function Headline:get_parent_headline()
   return nil
 end
 
+-- TODO
+-- - Tests
+-- - Write an update cookie mapping
 function Headline:update_cookie(type)
   local cookie = {
     node = self:cookie(),
