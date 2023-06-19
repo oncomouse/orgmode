@@ -436,8 +436,49 @@ function Headline:cookie()
   return self:parse('%[%d?%d?%d?%%%]')
 end
 
+-- Check if headline cookie has a type:
+function Headline:cookie_type()
+  if not self:cookie() then return nil end
+  local cookie_data = self:get_property("COOKIE_DATA")
+  if cookie_data then
+    if cookie_data:find("todo") then
+      return "todo"
+    end
+    if cookie_data:find("checkbox") then
+      return "checkbox"
+    end
+  end
+  -- Statistics cookie is of indeterminate type:
+  return nil
+end
+
+-- Check if headline cookie is recursive:
+function Headline:cookie_is_recursive()
+  if not self:cookie() then return false end
+  local cookie_data = self:get_property("COOKIE_DATA")
+  if cookie_data then
+    if cookie_data:find("recursive") then
+      return true
+    end
+  end
+  local type = self:cookie_type()
+  if type then
+    if config["org_hierarchical_" .. type .. "_statistics"] then
+      return true
+    end
+  end
+  return false
+end
+
+local function child_checkboxes(list_node)
+  return vim.tbl_map(function(node)
+    local text = ts.get_node_text(node, 0)
+    return text:match('%[.%]')
+  end, ts_utils.get_named_children(list_node))
+end
+
 function Headline:update_cookie(list_node)
-  local total_boxes = self:child_checkboxes(list_node)
+  local total_boxes = child_checkboxes(list_node)
   local checked_boxes = vim.tbl_filter(function(box)
     return box:match('%[%w%]')
   end, total_boxes)
@@ -452,13 +493,6 @@ function Headline:update_cookie(list_node)
     end
     tree_utils.set_node_text(cookie, new_cookie_val)
   end
-end
-
-function Headline:child_checkboxes(list_node)
-  return vim.tbl_map(function(node)
-    local text = ts.get_node_text(node, 0)
-    return text:match('%[.%]')
-  end, ts_utils.get_named_children(list_node))
 end
 
 -- @return tsnode, string
