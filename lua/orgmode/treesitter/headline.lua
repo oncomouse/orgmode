@@ -205,12 +205,15 @@ function Headline:set_todo(keyword)
   local current_todo = self:todo()
   if current_todo then
     tree_utils.set_node_text(current_todo, keyword)
+    self:update_cookie("todo")
     return
   end
 
   local stars = self:stars()
   local text = ts.get_node_text(stars, 0)
   tree_utils.set_node_text(stars, string.format('%s %s', text, keyword))
+  self:refresh()
+  self:update_cookie("todo")
 end
 
 function Headline:item()
@@ -495,6 +498,14 @@ local function child_checkboxes(list_node, recursive)
   return output
 end
 
+function Headline:get_parent_headline()
+  local parent_section = self.headline:parent():parent()
+  if parent_section:child(0):type() == "headline" then
+    return parent_section:child(0)
+  end
+  return nil
+end
+
 function Headline:update_cookie(type)
   local cookie = {
     node = self:cookie(),
@@ -503,6 +514,14 @@ function Headline:update_cookie(type)
   }
   local total = 0
   local done = 0
+  -- We always need to check the parent TODO, in case there's any recursion
+  if type == "todo" then
+     local parent_headline = self:get_parent_headline()
+     if parent_headline then
+       Headline:new(parent_headline):update_cookie("todo")
+     end
+     return
+  end
   if cookie.node and (cookie.type == nil or type == cookie.type) then
     local parent_section = tree_utils.find_parent_type(self.headline, 'section')
 
