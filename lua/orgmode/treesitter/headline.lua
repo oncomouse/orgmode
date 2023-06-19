@@ -481,14 +481,16 @@ local function child_checkboxes(list_node, recursive)
     local node = table.remove(queue)
     local text = ts.get_node_text(node, 0)
     table.insert(output, text:match('%[.%]'))
-    local children = ts_utils.get_named_children(node)
-    vim.tbl_map(function(child_node)
-      if child_node:type() == "list" then
-        vim.tbl_map(function(x)
-          table.insert(queue, x)
-        end, ts_utils.get_named_children(child_node))
-      end
-    end, children)
+    if recursive then
+      local children = ts_utils.get_named_children(node)
+      vim.tbl_map(function(child_node)
+        if child_node:type() == "list" then
+          vim.tbl_map(function(x)
+            table.insert(queue, x)
+          end, ts_utils.get_named_children(child_node))
+        end
+      end, children)
+    end
   end
   return output
 end
